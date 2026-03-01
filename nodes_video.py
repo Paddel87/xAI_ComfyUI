@@ -28,7 +28,7 @@ class GrokVideo:
             },
             "optional": {
                 "image_start": ("IMAGE",),
-                "image_end": ("IMAGE",), # For future support or if API supports it
+                "video_path": ("STRING", {"multiline": False, "default": ""}),
             }
         }
 
@@ -37,7 +37,7 @@ class GrokVideo:
     FUNCTION = "generate_video"
     CATEGORY = "xAI/Grok"
 
-    def generate_video(self, prompt, api_key, model, duration, aspect_ratio, resolution, polling_interval, timeout, dry_run, image_start=None, image_end=None):
+    def generate_video(self, prompt, api_key, model, duration, aspect_ratio, resolution, polling_interval, timeout, dry_run, image_start=None, video_path=""):
         # Cost Calculation
         # Assuming pricing: 480p=$0.05/sec, 720p=$0.07/sec
         price_per_sec = 0.07 if resolution == "720p" else 0.05
@@ -82,6 +82,25 @@ class GrokVideo:
             img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
             
             payload["image_url"] = f"data:image/jpeg;base64,{img_str}"
+
+        # Handle video input (Video-to-Video)
+        if video_path:
+            if video_path.startswith("http://") or video_path.startswith("https://"):
+                payload["video_url"] = video_path
+            elif os.path.exists(video_path):
+                 if not video_path.lower().endswith('.mp4'):
+                     raise ValueError("Input video must be an .mp4 file")
+                 
+                 # Check file size? 20MB limit for images, maybe similar for videos?
+                 # xAI docs say "The maximum length of the input video provided via the video_url parameter is 8.7 seconds."
+                 # It doesn't specify file size limit for base64 but simpler to try.
+                 
+                 with open(video_path, "rb") as f:
+                     video_data = base64.b64encode(f.read()).decode("utf-8")
+                 
+                 payload["video_url"] = f"data:video/mp4;base64,{video_data}"
+            else:
+                print(f"[GrokVideo] Warning: Video path '{video_path}' not found. Ignoring.")
 
         # Step 1: Start Generation
         try:

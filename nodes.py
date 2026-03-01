@@ -24,7 +24,9 @@ class GrokImagine:
                 "dry_run": ("BOOLEAN", {"default": False, "label_on": "Enable Dry Run (Cost Estimate)", "label_off": "Disable Dry Run"}),
             },
             "optional": {
-                "image_optional": ("IMAGE",),
+                "image_1": ("IMAGE",),
+                "image_2": ("IMAGE",),
+                "image_3": ("IMAGE",),
             }
         }
 
@@ -33,7 +35,7 @@ class GrokImagine:
     FUNCTION = "generate"
     CATEGORY = "xAI/Grok"
 
-    def generate(self, prompt, api_key, model, aspect_ratio, num_images, seed, dry_run, image_optional=None):
+    def generate(self, prompt, api_key, model, aspect_ratio, num_images, seed, dry_run, image_1=None, image_2=None, image_3=None):
         # Cost Calculation
         price_per_image = 0.07 # Estimated price
         estimated_cost = num_images * price_per_image
@@ -65,27 +67,31 @@ class GrokImagine:
             "aspect_ratio": aspect_ratio,
         }
         
-        # Handle optional image input (Image-to-Image / Style Transfer)
-        if image_optional is not None:
-            # ComfyUI passes image as tensor [B, H, W, C], float32, 0-1
-            # We take the first image in the batch
-            img_tensor = image_optional[0]
+        # Handle optional image input (Image-to-Image / Style Transfer / Editing)
+        input_images = []
+        for img in [image_1, image_2, image_3]:
+            if img is not None:
+                # ComfyUI passes image as tensor [B, H, W, C], float32, 0-1
+                # We take the first image in the batch
+                img_tensor = img[0]
+                
+                # Convert tensor to PIL Image
+                i = 255. * img_tensor.cpu().numpy()
+                pil_img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                
+                # Convert PIL Image to base64
+                buffered = io.BytesIO()
+                pil_img.save(buffered, format="JPEG")
+                img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                input_images.append(f"data:image/jpeg;base64,{img_str}")
+
+        if len(input_images) == 1:
+            payload["image_url"] = input_images[0]
+        elif len(input_images) > 1:
+            payload["image_urls"] = input_images
             
-            # Convert tensor to PIL Image
-            # Ensure it's in 0-255 range and uint8
-            i = 255. * img_tensor.cpu().numpy()
-            img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-            
-            # Convert PIL Image to base64
-            buffered = io.BytesIO()
-            img.save(buffered, format="JPEG")
-            img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-            
-            # Add to payload
-            payload["image_url"] = f"data:image/jpeg;base64,{img_str}"
-            
-            # Note: documentation says aspect_ratio follows input image when editing
-            # but we leave aspect_ratio in payload as it might be required or ignored safely.
+        # Note: documentation says aspect_ratio follows first input image when editing
+        # but we leave aspect_ratio in payload as it might be required or ignored safely.
   
  
         try:
